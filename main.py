@@ -1,10 +1,8 @@
-"""Catalogue-photo entry: the self-buttering toaster.
+"""Self-Butter Toaster catalogue entry.
 
-Copies the bundled catalogue photograph to the grader's output
-directory as ``entry.png``, after checking it against the gate:
-a whole PNG, at most 1 MiB, at most 1024 by 1024 pixels.
-
-Standard library only. No network access.
+Reads the catalogue photograph assets/gadget.png next to this script,
+checks it against the competition gate, and writes it out as entry.png
+in the output directory the harness provides.
 """
 
 import os
@@ -13,63 +11,72 @@ import sys
 
 MAX_BYTES = 1_048_576
 MAX_SIDE = 1024
-PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 ASSET_NAME = "gadget.png"
+OUTPUT_NAME = "entry.png"
 
 
-def die(message):
-    """Print an error and exit non-zero."""
+def fail(message):
     print(f"error: {message}", file=sys.stderr)
     sys.exit(1)
 
 
-def png_size(blob):
-    """Return (width, height) read from the PNG IHDR chunk."""
-    if len(blob) < 33:
-        die("image is too short to contain a PNG header")
-    if blob[:8] != PNG_SIGNATURE:
-        die("asset does not start with the PNG signature")
-    chunk_len, chunk_tag = struct.unpack(">I4s", blob[8:16])
-    if chunk_tag != b"IHDR" or chunk_len != 13:
-        die("first chunk is not a 13-byte IHDR")
-    width, height = struct.unpack(">II", blob[16:24])
+def read_png_dimensions(data):
+    """Return (width, height) from a PNG IHDR chunk, or None if malformed."""
+    if len(data) < 33:
+        return None
+    if data[12:16] != b"IHDR":
+        return None
+    width, height = struct.unpack(">II", data[16:24])
+    if width == 0 or height == 0:
+        return None
     return width, height
 
 
 def main():
-    base = os.path.dirname(os.path.abspath(__file__))
-    asset_path = os.path.join(base, "assets", ASSET_NAME)
-    if not os.path.isfile(asset_path):
-        die(f"bundled image missing: {asset_path}")
+    here = os.path.dirname(os.path.abspath(__file__))
+    source_path = os.path.join(here, "assets", ASSET_NAME)
 
-    with open(asset_path, "rb") as source:
-        blob = source.read()
+    try:
+        with open(source_path, "rb") as handle:
+            data = handle.read()
+    except OSError as exc:
+        fail(f"cannot read {source_path}: {exc}")
 
-    if len(blob) > MAX_BYTES:
-        die(f"image is {len(blob)} bytes, over the {MAX_BYTES} byte cap")
-    width, height = png_size(blob)
+    if not data.startswith(PNG_MAGIC):
+        fail(f"{ASSET_NAME} is not a PNG file")
+    if len(data) > MAX_BYTES:
+        fail(f"{ASSET_NAME} is {len(data)} bytes, over the {MAX_BYTES} limit")
+
+    dimensions = read_png_dimensions(data)
+    if dimensions is None:
+        fail(f"{ASSET_NAME} has no readable IHDR chunk")
+    width, height = dimensions
     if width > MAX_SIDE or height > MAX_SIDE:
-        die(f"image is {width}x{height}, over the {MAX_SIDE}x{MAX_SIDE} cap")
+        fail(f"{ASSET_NAME} is {width}x{height}, over the {MAX_SIDE}x{MAX_SIDE} limit")
 
     out_dir = os.environ.get("MAKEFUN_OUTPUT_DIR", "/output")
-    os.makedirs(out_dir, exist_ok=True)
-    out_path = os.path.join(out_dir, "entry.png")
-    with open(out_path, "wb") as target:
-        target.write(blob)
+    try:
+        os.makedirs(out_dir, exist_ok=True)
+    except OSError as exc:
+        fail(f"cannot create output directory {out_dir}: {exc}")
 
-    # Only the file we created gets a mode: the output directory
-    # belongs to the harness, and chmod on it would raise, so the
-    # directory is left exactly as the grader made it.
+    out_path = os.path.join(out_dir, OUTPUT_NAME)
+    try:
+        with open(out_path, "wb") as handle:
+            handle.write(data)
+    except OSError as exc:
+        fail(f"cannot write {out_path}: {exc}")
+
+    written = os.stat(out_path).st_size
+    if written != len(data):
+        fail(f"wrote {written} bytes but expected {len(data)}")
+
+    # Only the file itself gets its mode set; the directory belongs to
+    # the harness and may be owned by another user.
     os.chmod(out_path, 0o644)
-
-    # Confirm the file on disk is exactly the image validated above.
-    on_disk = os.path.getsize(out_path)
-    if on_disk != len(blob):
-        die(f"wrote {on_disk} bytes, expected {len(blob)}")
-
-    print(f"wrote {out_path}: {width}x{height}, {len(blob)} bytes")
-    return 0
+    print(f"wrote {out_path}: {width}x{height}, {len(data)} bytes")
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()

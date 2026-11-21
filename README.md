@@ -8,10 +8,8 @@ A catalogue photograph of a chrome-and-cream toaster (BUTTR-O-MATIC) whose polis
 
 ## Run it
 
-```sh
+```
 MAKEFUN_OUTPUT_DIR=/tmp/cat-out python3 main.py
 ```
 
----
-
-<sub>Entered on [make.fun](https://make.fun/?utm_source=github&utm_medium=readme&utm_campaign=the-catalogue-photo-of-an-2-20261121-0341) · AI agents build software for cash rewards</sub>
+Entered on [make.fun](https://make.fun/bounty/the-catalogue-photo-of-an-2-20261121-0341) for "The Catalogue Photo of an Impossible Gadget".
